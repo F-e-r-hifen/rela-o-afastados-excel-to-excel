@@ -44,25 +44,32 @@ def contar_dias_uteis(data_inicio, data_fim, feriados=[]):
 
 # Criar descrição do afastamento
 def criar_descricao_afastamento(row):
-    """Cria a descrição do afastamento"""
-    if row['DIAS_UTEIS_DESCONTO'] == 0:
-        tipo = "DECLARAÇÃO DE COMPARECIMENTO"
-    elif 'TRE' in str(row['CID/MOTIVO']).upper():
+    """Cria a descrição do afastamento com concordância correta"""
+    dias = row['DIAS_UTEIS_DESCONTO']
+
+    # Se não tem dias para descontar, não incluir na justificativa
+    if dias == 0:
+        return None
+
+    # Determinar o tipo de afastamento
+    motivo = str(row['CID/MOTIVO']).upper()
+
+    if 'TRE' in motivo:
         tipo = "TRE"
-    elif 'NOJO' in str(row['CID/MOTIVO']).upper():
+    elif 'NOJO' in motivo:
         tipo = "LICENÇA NOJO"
-    elif 'ALEITAMENTO' in str(row['CID/MOTIVO']).upper():
+    elif 'ALEITAMENTO' in motivo:
         tipo = "ALEITAMENTO MATERNO"
     else:
         tipo = "ATESTADO MÉDICO"
 
+    # Concordância: 1 DIA ou X DIAS
+    dias_texto = "1 DIA" if dias == 1 else f"{dias} DIAS"
+
     data_inicio = row['DIA DO AFASTAMENTO'].strftime('%d/%m')
     data_fim = (row['DATA DO RETORNO'] - timedelta(days=1)).strftime('%d/%m/%Y')
 
-    if row['DIAS_UTEIS_DESCONTO'] == 0:
-        return f"{tipo} - {data_inicio}"
-    else:
-        return f"{tipo} DE {row['DIAS_UTEIS_DESCONTO']} DIAS - {data_inicio} A {data_fim}"
+    return f"{tipo} DE {dias_texto} - {data_inicio} A {data_fim}"
 
 # Função para converter DataFrame para Excel
 def to_excel(df):
@@ -146,15 +153,31 @@ if uploaded_file is not None:
                     axis=1
                 )
 
-                # Criar descrição
+                # Criar descrição (retorna None se dias == 0)
                 df['DESCRICAO'] = df.apply(criar_descricao_afastamento, axis=1)
+
+                # Filtrar apenas afastamentos com dias > 0 para a justificativa
+                df_com_desconto = df[df['DESCRICAO'].notna()].copy()
 
                 # Agrupar por matrícula - DataFrame COMPLETO
                 df_completo = df.groupby('MAT.').agg({
                     'FUNCIONÁRIO': 'first',
-                    'DIAS_UTEIS_DESCONTO': 'sum',
-                    'DESCRICAO': lambda x: ' & '.join(x)
+                    'DIAS_UTEIS_DESCONTO': 'sum'
                 }).reset_index()
+
+                # Agrupar descrições apenas dos afastamentos com desconto
+                if len(df_com_desconto) > 0:
+                    df_justificativas = df_com_desconto.groupby('MAT.').agg({
+                        'DESCRICAO': lambda x: ' & '.join(x.dropna())
+                    }).reset_index()
+
+                    # Merge com o DataFrame completo
+                    df_completo = df_completo.merge(df_justificativas, on='MAT.', how='left')
+                else:
+                    df_completo['DESCRICAO'] = ''
+
+                # Preencher justificativas vazias
+                df_completo['DESCRICAO'] = df_completo['DESCRICAO'].fillna('')
 
                 df_completo.columns = ['MATRICULA', 'NOME', 'TOTAL_DIAS_DESCONTO', 'JUSTIFICATIVA_DESCONTO']
 
@@ -254,7 +277,6 @@ if uploaded_file is not None:
                     )
 
                     if funcionario_selecionado:
-                        # Buscar no DataFrame COMPLETO
                         info = df_completo[df_completo['NOME'] == funcionario_selecionado].iloc[0]
                         mat = info['MATRICULA']
                         detalhes = df[df['MAT.'] == mat]
@@ -268,7 +290,19 @@ if uploaded_file is not None:
                         st.markdown("#### 📋 Afastamentos:")
 
                         for idx, row in detalhes.iterrows():
-                            with st.expander(f"📅 {row['DIA DO AFASTAMENTO'].strftime('%d/%m/%Y')} - {row['DESCRICAO']}"):
+                            # Criar descrição para exibição (incluindo os sem desconto)
+                            if row['DIAS_UTEIS_DESCONTO'] == 0:
+                                motivo = str(row['CID/MOTIVO']).upper()
+                                if 'TRE' in motivo:
+                                    desc_exibicao = f"TRE (sem desconto)"
+                                else:
+                                    desc_exibicao = f"DECLARAÇÃO DE COMPARECIMENTO (sem desconto)"
+                                data_exibicao = row['DIA DO AFASTAMENTO'].strftime('%d/%m/%Y')
+                            else:
+                                desc_exibicao = row['DESCRICAO']
+                                data_exibicao = row['DIA DO AFASTAMENTO'].strftime('%d/%m/%Y')
+
+                            with st.expander(f"📅 {data_exibicao} - {desc_exibicao}"):
                                 col_det1, col_det2 = st.columns(2)
                                 with col_det1:
                                     st.write(f"**Início:** {row['DIA DO AFASTAMENTO'].strftime('%d/%m/%Y')}")
@@ -303,13 +337,14 @@ else:
     ### ⚠️ Observações importantes:
     - Sábados e domingos **não** são contados como dias de desconto
     - Feriados informados **não** são contados como dias de desconto
-    - Declarações de comparecimento (mesmo dia) não geram desconto
+    - Declarações de comparecimento e TRE (sem desconto) não aparecem na justificativa
     - Funcionários com múltiplos afastamentos terão os descontos somados
+    - Concordância correta: "1 DIA" ou "X DIAS"
     """)
 
 # Footer
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v1.0</div>",
+    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v2.1</div>",
     unsafe_allow_html=True
 )
