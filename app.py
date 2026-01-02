@@ -149,35 +149,35 @@ if uploaded_file is not None:
                 # Criar descrição
                 df['DESCRICAO'] = df.apply(criar_descricao_afastamento, axis=1)
 
-                # Agrupar por matrícula
-                resultado = df.groupby('MAT.').agg({
+                # Agrupar por matrícula - MANTENDO TODAS AS COLUNAS
+                resultado_completo = df.groupby('MAT.').agg({
                     'FUNCIONÁRIO': 'first',
                     'DIAS_UTEIS_DESCONTO': 'sum',
                     'DESCRICAO': lambda x: ' & '.join(x)
                 }).reset_index()
 
-                resultado.columns = ['MATRICULA', 'NOME', 'TOTAL_DIAS_DESCONTO', 'JUSTIFICATIVA_DESCONTO']
+                resultado_completo.columns = ['MATRICULA', 'NOME', 'TOTAL_DIAS_DESCONTO', 'JUSTIFICATIVA_DESCONTO']
 
                 # Calcular dias de direito
-                resultado['DIAS_DE_DIREITO'] = dias_trabalho - resultado['TOTAL_DIAS_DESCONTO']
-                resultado['DIAS_DE_DIREITO'] = resultado['DIAS_DE_DIREITO'].clip(lower=0)
+                resultado_completo['DIAS_DE_DIREITO'] = dias_trabalho - resultado_completo['TOTAL_DIAS_DESCONTO']
+                resultado_completo['DIAS_DE_DIREITO'] = resultado_completo['DIAS_DE_DIREITO'].clip(lower=0)
 
-                # Criar DataFrame para exibição (sem TOTAL_DIAS_DESCONTO)
-                resultado_exibicao = resultado[['MATRICULA', 'NOME', 'DIAS_DE_DIREITO', 'JUSTIFICATIVA_DESCONTO']].copy()
+                # Criar DataFrame para exibição/download (sem TOTAL_DIAS_DESCONTO)
+                resultado_exibicao = resultado_completo[['MATRICULA', 'NOME', 'DIAS_DE_DIREITO', 'JUSTIFICATIVA_DESCONTO']].copy()
 
                 # Exibir resultados
-                st.success(f"✅ Processamento concluído! Total de funcionários: {len(resultado)}")
+                st.success(f"✅ Processamento concluído! Total de funcionários: {len(resultado_completo)}")
 
                 # Métricas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("👥 Total de Funcionários", len(resultado))
+                    st.metric("👥 Total de Funcionários", len(resultado_completo))
                 with col2:
                     st.metric("📅 Dias de Trabalho", dias_trabalho)
                 with col3:
                     st.metric("🎉 Feriados", num_feriados)
                 with col4:
-                    media_dias = resultado['DIAS_DE_DIREITO'].mean()
+                    media_dias = resultado_completo['DIAS_DE_DIREITO'].mean()
                     st.metric("📊 Média Dias de Direito", f"{media_dias:.1f}")
 
                 st.markdown("---")
@@ -230,19 +230,19 @@ if uploaded_file is not None:
 
                     with col_stat1:
                         st.markdown("### 📊 Distribuição de Dias de Direito")
-                        dist_dias = resultado['DIAS_DE_DIREITO'].value_counts().sort_index()
+                        dist_dias = resultado_completo['DIAS_DE_DIREITO'].value_counts().sort_index()
                         st.bar_chart(dist_dias)
 
                     with col_stat2:
                         st.markdown("### 📈 Estatísticas Gerais")
-                        st.write(f"**Mínimo:** {resultado['DIAS_DE_DIREITO'].min()} dias")
-                        st.write(f"**Máximo:** {resultado['DIAS_DE_DIREITO'].max()} dias")
-                        st.write(f"**Média:** {resultado['DIAS_DE_DIREITO'].mean():.2f} dias")
-                        st.write(f"**Mediana:** {resultado['DIAS_DE_DIREITO'].median():.0f} dias")
+                        st.write(f"**Mínimo:** {resultado_completo['DIAS_DE_DIREITO'].min()} dias")
+                        st.write(f"**Máximo:** {resultado_completo['DIAS_DE_DIREITO'].max()} dias")
+                        st.write(f"**Média:** {resultado_completo['DIAS_DE_DIREITO'].mean():.2f} dias")
+                        st.write(f"**Mediana:** {resultado_completo['DIAS_DE_DIREITO'].median():.0f} dias")
 
                         # Funcionários com dias completos
-                        completos = len(resultado[resultado['DIAS_DE_DIREITO'] == dias_trabalho])
-                        st.write(f"**Funcionários com {dias_trabalho} dias:** {completos} ({completos/len(resultado)*100:.1f}%)")
+                        completos = len(resultado_completo[resultado_completo['DIAS_DE_DIREITO'] == dias_trabalho])
+                        st.write(f"**Funcionários com {dias_trabalho} dias:** {completos} ({completos/len(resultado_completo)*100:.1f}%)")
 
                 with tab3:
                     st.subheader("Detalhes dos Afastamentos")
@@ -250,17 +250,17 @@ if uploaded_file is not None:
                     # Selecionar funcionário
                     funcionario_selecionado = st.selectbox(
                         "Selecione um funcionário para ver detalhes:",
-                        options=resultado['NOME'].unique()
+                        options=resultado_completo['NOME'].unique()
                     )
 
                     if funcionario_selecionado:
-                        mat_selecionada = resultado[resultado['NOME'] == funcionario_selecionado]['MATRICULA'].iloc[0]
+                        # Buscar informações do funcionário no DataFrame COMPLETO
+                        mat_selecionada = resultado_completo[resultado_completo['NOME'] == funcionario_selecionado]['MATRICULA'].iloc[0]
+                        info_func = resultado_completo[resultado_completo['MATRICULA'] == mat_selecionada].iloc[0]
                         detalhes = df[df['MAT.'] == mat_selecionada]
 
                         st.markdown(f"### 👤 {funcionario_selecionado}")
                         st.markdown(f"**Matrícula:** {mat_selecionada}")
-
-                        info_func = resultado[resultado['MATRICULA'] == mat_selecionada].iloc[0]
                         st.markdown(f"**Dias de Direito:** {info_func['DIAS_DE_DIREITO']}")
                         st.markdown(f"**Total de Dias Descontados:** {info_func['TOTAL_DIAS_DESCONTO']}")
 
