@@ -185,16 +185,19 @@ if uploaded_file is not None:
                 df_completo['DIAS_DE_DIREITO'] = dias_trabalho - df_completo['TOTAL_DIAS_DESCONTO']
                 df_completo['DIAS_DE_DIREITO'] = df_completo['DIAS_DE_DIREITO'].clip(lower=0)
 
+                # ⭐ FILTRAR: Remover funcionários SEM desconto (TOTAL_DIAS_DESCONTO == 0)
+                df_completo = df_completo[df_completo['TOTAL_DIAS_DESCONTO'] > 0].reset_index(drop=True)
+
                 # DataFrame para download (sem TOTAL_DIAS_DESCONTO)
                 df_download = df_completo[['MATRICULA', 'NOME', 'DIAS_DE_DIREITO', 'JUSTIFICATIVA_DESCONTO']].copy()
 
                 # Exibir resultados
-                st.success(f"✅ Processamento concluído! Total de funcionários: {len(df_completo)}")
+                st.success(f"✅ Processamento concluído! Total de funcionários com desconto: {len(df_completo)}")
 
                 # Métricas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("👥 Total de Funcionários", len(df_completo))
+                    st.metric("👥 Funcionários com Desconto", len(df_completo))
                 with col2:
                     st.metric("📅 Dias de Trabalho", dias_trabalho)
                 with col3:
@@ -210,6 +213,7 @@ if uploaded_file is not None:
 
                 with tab1:
                     st.subheader("Planilha de Benefícios")
+                    st.info("ℹ️ Apenas funcionários com desconto são exibidos")
 
                     # Filtros
                     col_filtro1, col_filtro2 = st.columns(2)
@@ -263,9 +267,9 @@ if uploaded_file is not None:
                         st.write(f"**Média:** {df_completo['DIAS_DE_DIREITO'].mean():.2f} dias")
                         st.write(f"**Mediana:** {df_completo['DIAS_DE_DIREITO'].median():.0f} dias")
 
-                        # Funcionários com dias completos
-                        completos = len(df_completo[df_completo['DIAS_DE_DIREITO'] == dias_trabalho])
-                        st.write(f"**Funcionários com {dias_trabalho} dias:** {completos} ({completos/len(df_completo)*100:.1f}%)")
+                        # Total de dias descontados
+                        total_descontado = df_completo['TOTAL_DIAS_DESCONTO'].sum()
+                        st.write(f"**Total de Dias Descontados:** {total_descontado}")
 
                 with tab3:
                     st.subheader("Detalhes dos Afastamentos")
@@ -337,6 +341,7 @@ else:
     ### ⚠️ Observações importantes:
     - Sábados e domingos **não** são contados como dias de desconto
     - Feriados informados **não** são contados como dias de desconto
+    - **Funcionários sem desconto não aparecem na planilha final**
     - Declarações de comparecimento e TRE (sem desconto) não aparecem na justificativa
     - Funcionários com múltiplos afastamentos terão os descontos somados
     - Concordância correta: "1 DIA" ou "X DIAS"
@@ -345,6 +350,6 @@ else:
 # Footer
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v2.1</div>",
+    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v2.2</div>",
     unsafe_allow_html=True
 )
