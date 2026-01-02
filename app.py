@@ -44,12 +44,15 @@ def contar_dias_uteis(data_inicio, data_fim, feriados=[]):
 
 # Criar descrição do afastamento
 def criar_descricao_afastamento(row):
-    """Cria a descrição do afastamento com concordância correta"""
-    dias = row['DIAS_UTEIS_DESCONTO']
+    """Cria a descrição do afastamento usando QUANTIDADE DE DIAS da planilha base"""
+    dias_uteis = row['DIAS_UTEIS_DESCONTO']
 
-    # Se não tem dias para descontar, não incluir na justificativa
-    if dias == 0:
+    # Se não tem dias úteis para descontar, não incluir na justificativa
+    if dias_uteis == 0:
         return None
+
+    # Usar a QUANTIDADE DE DIAS da planilha (total de dias do atestado)
+    quantidade_dias = row['QUANTIDADE DE DIAS']
 
     # Determinar o tipo de afastamento
     motivo = str(row['CID/MOTIVO']).upper()
@@ -64,9 +67,11 @@ def criar_descricao_afastamento(row):
         tipo = "ATESTADO MÉDICO"
 
     # Concordância: 1 DIA ou X DIAS
-    dias_texto = "1 DIA" if dias == 1 else f"{dias} DIAS"
+    dias_texto = "1 DIA" if quantidade_dias == 1 else f"{quantidade_dias} DIAS"
 
+    # Data de início e fim do afastamento
     data_inicio = row['DIA DO AFASTAMENTO'].strftime('%d/%m')
+    # Fim = data de retorno - 1 dia
     data_fim = (row['DATA DO RETORNO'] - timedelta(days=1)).strftime('%d/%m/%Y')
 
     return f"{tipo} DE {dias_texto} - {data_inicio} A {data_fim}"
@@ -133,7 +138,7 @@ if uploaded_file is not None:
             df.columns = df.columns.str.strip()
 
             # Verificar se as colunas necessárias existem
-            colunas_necessarias = ['FUNCIONÁRIO', 'MAT.', 'DIA DO AFASTAMENTO', 'DATA DO RETORNO', 'CID/MOTIVO']
+            colunas_necessarias = ['FUNCIONÁRIO', 'MAT.', 'DIA DO AFASTAMENTO', 'DATA DO RETORNO', 'CID/MOTIVO', 'QUANTIDADE DE DIAS']
             colunas_faltantes = [col for col in colunas_necessarias if col not in df.columns]
 
             if colunas_faltantes:
@@ -153,10 +158,10 @@ if uploaded_file is not None:
                     axis=1
                 )
 
-                # Criar descrição (retorna None se dias == 0)
+                # Criar descrição (retorna None se dias úteis == 0)
                 df['DESCRICAO'] = df.apply(criar_descricao_afastamento, axis=1)
 
-                # Filtrar apenas afastamentos com dias > 0 para a justificativa
+                # Filtrar apenas afastamentos com dias úteis > 0 para a justificativa
                 df_com_desconto = df[df['DESCRICAO'].notna()].copy()
 
                 # Agrupar por matrícula - DataFrame COMPLETO
@@ -179,17 +184,17 @@ if uploaded_file is not None:
                 # Preencher justificativas vazias
                 df_completo['DESCRICAO'] = df_completo['DESCRICAO'].fillna('')
 
-                df_completo.columns = ['MATRICULA', 'NOME', 'TOTAL_DIAS_DESCONTO', 'JUSTIFICATIVA_DESCONTO']
+                df_completo.columns = ['MATRICULA', 'NOME', 'DIAS_DE_DESCONTO', 'JUSTIFICATIVA_DESCONTO']
 
                 # Calcular dias de direito
-                df_completo['DIAS_DE_DIREITO'] = dias_trabalho - df_completo['TOTAL_DIAS_DESCONTO']
+                df_completo['DIAS_DE_DIREITO'] = dias_trabalho - df_completo['DIAS_DE_DESCONTO']
                 df_completo['DIAS_DE_DIREITO'] = df_completo['DIAS_DE_DIREITO'].clip(lower=0)
 
-                # ⭐ FILTRAR: Remover funcionários SEM desconto (TOTAL_DIAS_DESCONTO == 0)
-                df_completo = df_completo[df_completo['TOTAL_DIAS_DESCONTO'] > 0].reset_index(drop=True)
+                # Filtrar: Remover funcionários SEM desconto
+                df_completo = df_completo[df_completo['DIAS_DE_DESCONTO'] > 0].reset_index(drop=True)
 
-                # DataFrame para download (sem TOTAL_DIAS_DESCONTO)
-                df_download = df_completo[['MATRICULA', 'NOME', 'DIAS_DE_DIREITO', 'JUSTIFICATIVA_DESCONTO']].copy()
+                # DataFrame para download - ORDEM DAS COLUNAS
+                df_download = df_completo[['MATRICULA', 'NOME', 'DIAS_DE_DIREITO', 'DIAS_DE_DESCONTO', 'JUSTIFICATIVA_DESCONTO']].copy()
 
                 # Exibir resultados
                 st.success(f"✅ Processamento concluído! Total de funcionários com desconto: {len(df_completo)}")
@@ -268,7 +273,7 @@ if uploaded_file is not None:
                         st.write(f"**Mediana:** {df_completo['DIAS_DE_DIREITO'].median():.0f} dias")
 
                         # Total de dias descontados
-                        total_descontado = df_completo['TOTAL_DIAS_DESCONTO'].sum()
+                        total_descontado = df_completo['DIAS_DE_DESCONTO'].sum()
                         st.write(f"**Total de Dias Descontados:** {total_descontado}")
 
                 with tab3:
@@ -288,7 +293,7 @@ if uploaded_file is not None:
                         st.markdown(f"### 👤 {funcionario_selecionado}")
                         st.markdown(f"**Matrícula:** {mat}")
                         st.markdown(f"**Dias de Direito:** {info['DIAS_DE_DIREITO']}")
-                        st.markdown(f"**Total de Dias Descontados:** {info['TOTAL_DIAS_DESCONTO']}")
+                        st.markdown(f"**Dias de Desconto:** {info['DIAS_DE_DESCONTO']}")
 
                         st.markdown("---")
                         st.markdown("#### 📋 Afastamentos:")
@@ -311,8 +316,9 @@ if uploaded_file is not None:
                                 with col_det1:
                                     st.write(f"**Início:** {row['DIA DO AFASTAMENTO'].strftime('%d/%m/%Y')}")
                                     st.write(f"**Retorno:** {row['DATA DO RETORNO'].strftime('%d/%m/%Y')}")
+                                    st.write(f"**Quantidade de Dias:** {row['QUANTIDADE DE DIAS']}")
                                 with col_det2:
-                                    st.write(f"**Dias Úteis:** {row['DIAS_UTEIS_DESCONTO']}")
+                                    st.write(f"**Dias Úteis Descontados:** {row['DIAS_UTEIS_DESCONTO']}")
                                     st.write(f"**Motivo:** {row['CID/MOTIVO']}")
 
         except Exception as e:
@@ -336,20 +342,37 @@ else:
     - `MAT.`: Matrícula (código único)
     - `DIA DO AFASTAMENTO`: Data de início do afastamento
     - `DATA DO RETORNO`: Data de retorno ao trabalho
+    - `QUANTIDADE DE DIAS`: Total de dias do atestado (incluindo finais de semana)
     - `CID/MOTIVO`: Motivo do afastamento
 
+    ### 📊 Colunas da planilha final:
+    - `MATRICULA`: Código do funcionário
+    - `NOME`: Nome do funcionário
+    - `DIAS_DE_DIREITO`: Dias que o funcionário tem direito ao benefício
+    - `DIAS_DE_DESCONTO`: Total de dias úteis descontados
+    - `JUSTIFICATIVA_DESCONTO`: Descrição completa dos afastamentos
+
     ### ⚠️ Observações importantes:
+    - **JUSTIFICATIVA:** Usa a "QUANTIDADE DE DIAS" da planilha (total do atestado)
+    - **DESCONTO:** Usa apenas dias úteis (excluindo sábados, domingos e feriados)
     - Sábados e domingos **não** são contados como dias de desconto
     - Feriados informados **não** são contados como dias de desconto
     - **Funcionários sem desconto não aparecem na planilha final**
     - Declarações de comparecimento e TRE (sem desconto) não aparecem na justificativa
     - Funcionários com múltiplos afastamentos terão os descontos somados
     - Concordância correta: "1 DIA" ou "X DIAS"
+
+    ### 📝 Exemplo:
+    - Atestado de 02/12 a 12/12 (retorno 13/12)
+    - QUANTIDADE DE DIAS: 10 (total do atestado)
+    - DIAS ÚTEIS: 7 (excluindo sábado e domingo)
+    - JUSTIFICATIVA: "ATESTADO MÉDICO DE 10 DIAS - 02/12 A 12/12/2025"
+    - DESCONTO: 7 dias
     """)
 
 # Footer
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v2.2</div>",
+    "<div style='text-align: center; color: gray;'>Sistema de Cálculo de Benefícios v2.4</div>",
     unsafe_allow_html=True
 )
